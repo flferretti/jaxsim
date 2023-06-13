@@ -69,8 +69,9 @@ def aba(
         )
         pA = pA.at[0].set(pA_0)
 
+    # Pass 1
     def loop_body_pass1(carry, i):
-        qd, f_ext, i_X_λi, v, c, MA, pA = carry
+        qd, f_ext, i_X_λi, v, c, MA, pA, i_X_0 = carry  # Add i_X_0 as an argument
 
         # Compute parent-to-child transform
         i_X_λi_i = i_X_pre[i] @ pre_X_λi[i]
@@ -97,10 +98,10 @@ def aba(
         pA_i = Cross.vx_star(v[i]) @ M[i] @ v[i] - i_X_W @ jnp.vstack(f_ext[i])
         pA = pA.at[i].set(pA_i)
 
-        return qd, f_ext, i_X_λi, v, c, MA, pA
+        return (qd, f_ext, i_X_λi, v, c, MA, pA, i_X_0), ()
 
-    carry = (qd, f_ext, i_X_λi, v, c, MA, pA)
-    _, _, i_X_λi, v, c, MA, pA = jax.lax.scan(
+    carry = (qd, f_ext, i_X_λi, v, c, MA, pA, i_X_0)
+    (qd, f_ext, i_X_λi, v, c, MA, pA, i_X_0), _ = jax.lax.scan(
         loop_body_pass1, carry, jnp.arange(1, model.NB + 1)
     )
 
@@ -108,6 +109,7 @@ def aba(
     d = jnp.zeros(shape=(model.NB, 1))
     u = jnp.zeros(shape=(model.NB, 1))
 
+    # Pass 2
     def loop_body_pass2(carry, i):
         tau, U, d, u, MA, pA = carry
 
@@ -126,19 +128,29 @@ def aba(
         pa = pA[i] + Ma @ c[i] + U[i] * u[i] / d[i]
 
         # Propagate them to the parent, handling the base link
-        MA_pA = (MA, pA)
+        def propagate(MA_pA):
+            MA, pA = MA_pA
 
-        MA_λi = MA[λ[i]] + i_X_λi[i].T @ Ma @ i_X_λi[i]
-        MA = MA.at[λ[i]].set(MA_λi)
+            MA_λi = MA[λ[i]] + i_X_λi[i].T @ Ma @ i_X_λi[i]
+            MA = MA.at[λ[i]].set(MA_λi)
 
-        pA_λi = pA[λ[i]] + i_X_λi[i].T @ pa
-        pA = pA.at[λ[i]].set(pA_λi)
+            pA_λi = pA[λ[i]] + i_X_λi[i].T @ pa
+            pA = pA.at[λ[i]].set(pA_λi)
 
-        return tau, U, d, u, MA, pA
+            return MA, pA
+
+        MA, pA = jax.lax.cond(
+            pred=jnp.array([λ[i] != 0, model.is_floating_base]).any(),
+            true_fun=propagate,
+            false_fun=lambda MA_pA: MA_pA,
+            operand=(MA, pA),
+        )
+
+        return (tau, U, d, u, MA, pA), ()
 
     carry = (tau, U, d, u, MA, pA)
-    _, _, _, _, MA, pA = jax.lax.scan(
-        loop_body_pass2, carry, jnp.arange(model.NB - 1, -1, -1)
+    (tau, U, d, u, MA, pA), _ = jax.lax.scan(
+        loop_body_pass2, carry, jnp.arange(model.NB - 1, 0, -1)
     )
 
     if model.is_floating_base:
@@ -150,6 +162,7 @@ def aba(
     a = a.at[0].set(a0)
     qdd = jnp.zeros_like(q)
 
+    # Pass 3
     def loop_body_pass3(carry, i):
         a, qdd = carry
 
@@ -158,28 +171,28 @@ def aba(
 
         # Compute joint accelerations
         qdd_ii = (u[i] - U[i].T @ a_i) / d[i]
-        qdd = jnp.where(qdd.size != 0, qdd.at[i - 1].set(qdd_ii.squeeze()), qdd)
+        qdd = qdd.at[i - 1].set(qdd_ii.squeeze()) if qdd.size != 0 else qdd
 
         a_i = a_i + S[i] * qdd[i - 1] if qdd.size != 0 else a_i
         a = a.at[i].set(a_i)
 
-        return a, qdd
+        return (a, qdd), ()
 
     carry = (a, qdd)
-    _, qdd = jax.lax.scan(loop_body_pass3, carry, jnp.arange(1, model.NB + 1))
+    (a_, qdd), () = jax.lax.scan(loop_body_pass3, carry, jnp.arange(1, model.NB + 1))
 
     # Handle 1 DoF models
     qdd = jnp.atleast_1d(qdd.squeeze())
-    qdd = jnp.where(qdd.size > 0, jnp.vstack(qdd), jnp.empty(shape=(0, 1)))
+    qdd = jnp.vstack(qdd) if qdd.size > 0 else jnp.empty(shape=(0, 1))
 
     # Get the resulting base acceleration (w/o gravity) in body-fixed representation
     B_a_WB = a[0]
 
     # Convert the base acceleration to inertial-fixed representation, and add gravity
-    W_a_WB = jnp.where(
-        model.is_floating_base,
-        jnp.linalg.solve(B_X_W, B_a_WB) + jnp.vstack(model.gravity),
-        jnp.zeros(6),
+    W_a_WB = jnp.vstack(
+        jnp.linalg.solve(B_X_W, B_a_WB) + jnp.vstack(model.gravity)
+        if model.is_floating_base
+        else jnp.zeros(6)
     )
 
     return W_a_WB, qdd
