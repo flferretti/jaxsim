@@ -283,14 +283,21 @@ class Model(JaxsimDataclass):
 
         self._set_mutability(original_mutability)
 
-    def reduce(self, considered_joints: List[str]) -> None:
+    def reduce(
+        self, considered_joints: List[str], reset_base_pose: bool = True
+    ) -> None:
         """
         Reduce the model by lumping together the links connected by removed joints.
 
         Args:
             considered_joints: The list of joints to consider.
-        """
+            reset_base_pose: A flag indicating whether to reset the base pose of the reduced model.
+                            If set to True (default), the base pose will be reset to its default position.
+                            If set to False, the base pose of the reduced model will be kept the same as the original model.
 
+        Note:
+            The base pose refers to the position and orientation of the base link of the robot model.
+        """
         # Reduce the model description
         reduced_model_description = self.physics_model.description.reduce(
             considered_joints=considered_joints
@@ -309,11 +316,20 @@ class Model(JaxsimDataclass):
             vel_repr=self.velocity_representation,
         )
 
+        original_position = self.base_position()
+        original_transform = self.base_transform()
+
         # Replace the current model with the reduced one
         original_mutability = self._mutability()
         self._set_mutability(mutability=self._mutability().MUTABLE_NO_VALIDATION)
         self.physics_model = reduced_model.physics_model
         self.data = reduced_model.data
+
+        # Keep original base link pose if specified
+        if not reset_base_pose:
+            self.base_position = original_position
+            self.base_transform = original_transform
+
         self._links = reduced_model._links
         self._joints = reduced_model._joints
         self._set_mutability(original_mutability)
