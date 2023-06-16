@@ -327,8 +327,9 @@ class Model(JaxsimDataclass):
 
         # Keep original base link pose if specified
         if not reset_base_pose:
-            self.base_position = original_position
-            self.base_transform = original_transform
+            self._set_mutability(mutability=self._mutability().MUTABLE_NO_VALIDATION)
+            self.reset_base_position(original_position)
+            self.reset_base_transform(original_transform)
 
         self._links = reduced_model._links
         self._joints = reduced_model._joints
