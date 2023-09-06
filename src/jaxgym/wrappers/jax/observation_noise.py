@@ -65,7 +65,6 @@ class ObservationNoiseWrapper(
     ) -> WrapperStateType:
         """"""
 
-
         return self.env.transition(state=state, action=action, rng=rng)
 
     # def observation(self, state: WrapperStateType) -> WrapperObsType:
