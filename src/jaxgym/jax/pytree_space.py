@@ -186,7 +186,7 @@ class PyTree(gym.Space[jtp.PyTree]):
 
         # Use the subkey to generate new keys, one for each leaf.
         # Note: the division by 2 is needed because keys are vector of 2 elements.
-        subkey_flat = jax.random.split(key=key, num=dummy_pytree_flat.size / 2)
+        subkey_flat = jax.random.split(key=key, num=dummy_pytree_flat.size // 2)
 
         # Generate a pytree having a different subkey in each leaf
         subkey_pytree = unflatten_fn(jnp.array(subkey_flat).flatten())
