@@ -10,18 +10,24 @@ import numpy as np
 import numpy.typing as npt
 import rod
 from meshcat_viz import MeshcatWorld
+from resolve_robotics_uri_py import resolve_robotics_uri
 
 import jaxgym.jax.pytree_space as spaces
 import jaxsim.typing as jtp
 from jaxgym.jax import JaxDataclassEnv, JaxEnv
 from jaxgym.vector.jax import JaxVectorEnv
+from jaxgym.wrappers.jax import (
+    FlattenSpacesWrapper,
+    JaxTransformWrapper,
+    TimeLimit,
+    ToNumPyWrapper,
+)
 from jaxsim import JaxSim
 from jaxsim.physics.algos.soft_contacts import SoftContactsParams
 from jaxsim.simulation import simulator_callbacks
 from jaxsim.simulation.ode_integration import IntegratorType
 from jaxsim.simulation.simulator import SimulatorData, VelRepr
 from jaxsim.utils import JaxsimDataclass, Mutability
-from resolve_robotics_uri_py import resolve_robotics_uri
 
 
 @jax_dataclasses.pytree_dataclass
@@ -524,21 +530,11 @@ class ErgoCubWalkVectorEnvV0(JaxVectorEnv):
 
 
 if __name__ == "__main__":
-    from typing import Optional
-
-    from jaxgym.wrappers.jax import (
-        FlattenSpacesWrapper,
-        JaxTransformWrapper,
-        TimeLimit,
-        ToNumPyWrapper,
-    )
 
     def make_jax_env(
         max_episode_steps: Optional[int] = 500, jit: bool = True
     ) -> JaxEnv:
         """"""
-
-        # TODO: single env -> time limit with stable_baselines?
 
         if max_episode_steps in {None, 0}:
             env = ErgoCubWalkFuncEnvV0()
@@ -559,7 +555,7 @@ if __name__ == "__main__":
             render_mode="meshcat_viz",
         )
 
-    env = make_jax_env(max_episode_steps=5, jit=False)
+    env = make_jax_env(max_episode_steps=5, jit=True)
 
     obs, state_info = env.reset(seed=0)
     _ = env.render()
