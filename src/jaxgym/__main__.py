@@ -810,11 +810,7 @@ if __name__ == "__main__cartpole_gpu_vec_env":
         )
     )
 
-    %time _ = vec_env.reset()
-    %time _ = vec_env.reset()
     actions = vec_env.jax_vector_env.action_space.sample()
-    %time _ = vec_env.step(actions)
-    %time _ = vec_env.step(actions)
 
     # 0: ok
     # 1: ok
@@ -908,7 +904,8 @@ if __name__ == "__main__cartpole_gpu_vec_env":
         # Create the policy closure
         policy = lambda observation: model.policy.predict(
             # observation=observation, deterministic=True
-            observation=vec_env.normalize_obs(observation), deterministic=True
+            observation=vec_env.normalize_obs(observation),
+            deterministic=True,
         )[0]
 
         # Evaluate the policy
@@ -1041,14 +1038,18 @@ if __name__ == "__main_comparison_mujoco":
         # θ = np.arctan2(np.sin(pivot_pos), np.cos(pivot_pos))
         θ = pivot_pos
 
-        return np.array(
-            [
-                mujoco_model.joint_position(joint_name="linear"),
-                mujoco_model.joint_velocity(joint_name="linear"),
-                θ,
-                mujoco_model.joint_velocity(joint_name="pivot"),
-            ]
-        ).squeeze().copy()
+        return (
+            np.array(
+                [
+                    mujoco_model.joint_position(joint_name="linear"),
+                    mujoco_model.joint_velocity(joint_name="linear"),
+                    θ,
+                    mujoco_model.joint_velocity(joint_name="pivot"),
+                ]
+            )
+            .squeeze()
+            .copy()
+        )
 
     def mj_reset(
         mujoco_model: MujocoModel, observation: Optional[npt.NDArray] = None
@@ -1170,12 +1171,12 @@ if __name__ == "__main_comparison_mujoco":
     # ============
 
     model_xml_path = (
-            pathlib.Path.home()
-            / "git"
-            / "jaxsim"
-            / "examples"
-            / "resources"
-            / "cartpole_mj.xml"
+        pathlib.Path.home()
+        / "git"
+        / "jaxsim"
+        / "examples"
+        / "resources"
+        / "cartpole_mj.xml"
     )
 
     m = MujocoModel(xml_path=model_xml_path)
@@ -1219,12 +1220,12 @@ if __name__ == "__main_comparison_mujoco":
     # ============
 
     model_xml_path = (
-            pathlib.Path.home()
-            / "git"
-            / "jaxsim"
-            / "examples"
-            / "resources"
-            / "cartpole_mj.xml"
+        pathlib.Path.home()
+        / "git"
+        / "jaxsim"
+        / "examples"
+        / "resources"
+        / "cartpole_mj.xml"
     )
 
     m = MujocoModel(xml_path=model_xml_path)
@@ -1268,6 +1269,7 @@ if __name__ == "__main_comparison_mujoco":
     # ====
 
     import palettable
+
     # https://jiffyclub.github.io/palettable/cartocolors/diverging/
     # colors = palettable.cartocolors.diverging.Geyser_5.mpl_colors
     colors = palettable.cartocolors.qualitative.Prism_8.mpl_colors
@@ -1284,10 +1286,14 @@ if __name__ == "__main_comparison_mujoco":
 
     ax1.plot(time, mj_pos_pole, label=r"nominal", color=colors[1], linewidth=1)
     ax1.plot(time, mj_pos_pole_alt1, label=r"mass", color=colors[3], linewidth=1)
-    ax1.plot(time, mj_pos_pole_alt2, label=r"mass+friction", color=colors[7], linewidth=1)
+    ax1.plot(
+        time, mj_pos_pole_alt2, label=r"mass+friction", color=colors[7], linewidth=1
+    )
     ax2.plot(time, mj_pos_cart, label=r"nominal", color=colors[1], linewidth=1)
     ax2.plot(time, mj_pos_cart_alt1, label=r"mass", color=colors[3], linewidth=1)
-    ax2.plot(time, mj_pos_cart_alt2, label=r"mass+friction", color=colors[7], linewidth=1)
+    ax2.plot(
+        time, mj_pos_cart_alt2, label=r"mass+friction", color=colors[7], linewidth=1
+    )
     ax3.plot(time, mj_action, label=r"nominal", color=colors[1], linewidth=1)
     ax3.plot(time, mj_action_alt1, label=r"mass", color=colors[3], linewidth=1)
     ax3.plot(time, mj_action_alt2, label=r"mass+friction", color=colors[7], linewidth=1)
@@ -1314,6 +1320,7 @@ if __name__ == "__main_comparison_mujoco":
     # plt.show()
 
     import tikzplotlib
+
     tikzplotlib.clean_figure()
     print(tikzplotlib.get_tikz_code())
 

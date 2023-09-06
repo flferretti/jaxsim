@@ -8,6 +8,7 @@ import numpy as np
 from gymnasium.core import ActType, ObsType, RenderFrame
 from gymnasium.envs.registration import EnvSpec
 from gymnasium.utils import seeding
+
 # from meshcat_viz import MeshcatWorld
 
 import jaxgym.jax.pytree_space as spaces
