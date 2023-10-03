@@ -227,9 +227,7 @@ class PyTree(gym.Space[jtp.PyTree]):
 
         def is_inside_bounds(x, low, high):
             return jax.lax.select(
-                pred=jnp.alltrue(
-                    jnp.array([jnp.alltrue(x >= low), jnp.alltrue(x <= high)])
-                ),
+                pred=x.size == 0 or jnp.all((x >= low) & (x <= high)),
                 on_true=True,
                 on_false=False,
             )
