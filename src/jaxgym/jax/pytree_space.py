@@ -115,7 +115,7 @@ class PyTree(gym.Space[jtp.PyTree]):
         seed = (
             seed
             if seed is not None
-            else np.random.default_rng().integers(0, 2**32 - 1, dtype="uint32")
+            else np.random.default_rng().integers(0, 2 ** 32 - 1, dtype="uint32")
         )
 
         # Initialize the JAX random key
@@ -216,7 +216,7 @@ class PyTree(gym.Space[jtp.PyTree]):
         seed = (
             seed
             if seed is not None
-            else np.random.default_rng().integers(0, 2**32 - 1, dtype="uint32")
+            else np.random.default_rng().integers(0, 2 ** 32 - 1, dtype="uint32")
         )
 
         self.key = jax.random.PRNGKey(seed=seed)

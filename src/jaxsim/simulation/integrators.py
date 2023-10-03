@@ -338,7 +338,7 @@ def odeint_euler(
     t: TimeHorizon,
     *args,
     num_sub_steps: int = 1,
-    return_aux: bool = False
+    return_aux: bool = False,
 ) -> Union[State, Tuple[State, Dict[str, Any]]]:
     """
     Integrate a system of ODEs using the Euler method.
@@ -378,7 +378,7 @@ def odeint_euler_semi_implicit(
     t: TimeHorizon,
     *args,
     num_sub_steps: int = 1,
-    return_aux: bool = False
+    return_aux: bool = False,
 ) -> Union[State, Tuple[State, Dict[str, Any]]]:
     """
     Integrate a system of ODEs using the Semi-Implicit Euler method.
@@ -418,7 +418,7 @@ def odeint_rk4(
     t: TimeHorizon,
     *args,
     num_sub_steps: int = 1,
-    return_aux: bool = False
+    return_aux: bool = False,
 ) -> Union[State, Tuple[State, Dict[str, Any]]]:
     """
     Integrate a system of ODEs using the Runge-Kutta 4 method.

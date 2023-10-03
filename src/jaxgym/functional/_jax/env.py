@@ -53,7 +53,7 @@ class FunctionalJaxEnv(gym.Env):
             self.render_state = None
 
         np_random, _ = seeding.np_random()
-        seed = np_random.integers(0, 2**32 - 1, dtype="uint32")
+        seed = np_random.integers(0, 2 ** 32 - 1, dtype="uint32")
 
         self.rng = jrng.PRNGKey(seed)
 

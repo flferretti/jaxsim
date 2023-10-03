@@ -11,9 +11,9 @@ from gymnasium.experimental.functional import (
     TerminalType,
 )
 
-from jaxsim import logging
 from jaxgym.jax import JaxDataclassEnv, JaxDataclassWrapper
 from jaxgym.wrappers import TransformWrapper
+from jaxsim import logging
 from jaxsim.utils import JaxsimDataclass, Mutability
 
 

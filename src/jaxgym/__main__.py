@@ -352,7 +352,7 @@ class CustomVecEnvSB(vec_env_sb.VecEnv):
         """"""
 
         if seed is None:
-            seed = np.random.default_rng().integers(0, 2**32 - 1, dtype="uint32")
+            seed = np.random.default_rng().integers(0, 2 ** 32 - 1, dtype="uint32")
 
         if np.array(seed, dtype="uint32") != np.array(seed):
             raise ValueError(f"seed must be compatible with 'uint32' casting")

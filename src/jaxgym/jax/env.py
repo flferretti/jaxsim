@@ -9,11 +9,11 @@ from gymnasium.core import ActType, ObsType, RenderFrame
 from gymnasium.envs.registration import EnvSpec
 from gymnasium.utils import seeding
 
-# from meshcat_viz import MeshcatWorld
-
 import jaxgym.jax.pytree_space as spaces
 from jaxgym.jax import JaxDataclassEnv, JaxDataclassWrapper
 from jaxsim import logging
+
+# from meshcat_viz import MeshcatWorld
 
 
 class JaxEnv(gym.Env[ObsType, ActType], Generic[ObsType, ActType]):
@@ -71,7 +71,7 @@ class JaxEnv(gym.Env[ObsType, ActType], Generic[ObsType, ActType]):
         self._meshcat_window = None  # old
 
         # Initialize the RNGs with a random seed
-        seed = np.random.default_rng().integers(0, 2**32 - 1, dtype="uint32")
+        seed = np.random.default_rng().integers(0, 2 ** 32 - 1, dtype="uint32")
         self._np_random, _ = seeding.np_random(seed=int(seed))
         self.rng = jax.random.PRNGKey(seed=seed)
 

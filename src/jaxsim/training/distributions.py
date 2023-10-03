@@ -68,7 +68,7 @@ class SquashedMultivariateNormalDiagBase(distribution.Distribution):
         self,
         *,
         seed: Union[distribution.IntLike, distribution.PRNGKey],
-        sample_shape: Union[distribution.IntLike, Sequence[distribution.IntLike]] = ()
+        sample_shape: Union[distribution.IntLike, Sequence[distribution.IntLike]] = (),
     ) -> distribution.Array:
         # Sample from the MultivariateNormal distribution
         unsquashed_sample = self.normal.sample(seed=seed, sample_shape=sample_shape)
