@@ -14,7 +14,6 @@ def tracing(var: Any) -> bool | jax.Array:
             isinstance(var, t)
             for t in (
                 jax._src.core.Tracer,
-                jax.abstract_arrays.ShapedArray,
                 jax.interpreters.partial_eval.DynamicJaxprTracer,
             )
         ]

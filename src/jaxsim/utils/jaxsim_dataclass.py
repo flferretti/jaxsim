@@ -42,10 +42,10 @@ class JaxsimDataclass(abc.ABC):
     ) -> Generator[Self, None, None]:
         """"""
 
-        if restore_after_exception:
-            self_copy = self.copy()
-
         original_mutability = self._mutability()
+
+        if restore_after_exception:
+            self_copy = copy.copy(self)
 
         def restore_self():
             self._set_mutability(mutability=Mutability.MUTABLE)
