@@ -10,8 +10,8 @@ from gymnasium.experimental.functional import (
     TerminalType,
 )
 
-from jaxgym.jax import JaxDataclassWrapper
 from jaxgym.functional import FuncEnv
+from jaxgym.jax import JaxDataclassWrapper
 from jaxsim import logging
 
 WrapperStateType = StateType

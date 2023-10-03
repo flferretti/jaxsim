@@ -266,7 +266,7 @@ class CartpoleSwingUpFuncEnvV0(
         # type(self).terminal(self=self, state=next_state), dtype=float
         reward_pivot = jnp.cos(observation.pivot_pos)
         cost_action = jnp.sqrt(action.dot(action))
-        cost_pivot_vel = jnp.sqrt(observation.pivot_vel**2)
+        cost_pivot_vel = jnp.sqrt(observation.pivot_vel ** 2)
         cost_linear_pos = jnp.abs(observation.linear_pos)
 
         reward = 0
