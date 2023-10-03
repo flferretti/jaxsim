@@ -67,7 +67,7 @@ class PyTree(gym.Space[jtp.PyTree]):
                 )
             )
 
-            if not jnp.alltrue(dtypes_supported):
+            if not jnp.all(dtypes_supported):
                 raise ValueError(
                     "Either low or high pytrees have attributes with unsupported dtype"
                 )
@@ -78,7 +78,7 @@ class PyTree(gym.Space[jtp.PyTree]):
                 )
             )
 
-            if not jnp.alltrue(shape_match):
+            if not jnp.all(shape_match):
                 raise ValueError("Wrong shape of low and high attributes")
 
             dtype_match = self.flatten_pytree(
@@ -87,7 +87,7 @@ class PyTree(gym.Space[jtp.PyTree]):
                 )
             )
 
-            if not jnp.alltrue(dtype_match):
+            if not jnp.all(dtype_match):
                 raise ValueError("Wrong dtype of low and high attributes")
 
         if not_tracing(var=low):
@@ -243,7 +243,7 @@ class PyTree(gym.Space[jtp.PyTree]):
 
         contains_all_leaves_flat = self.flatten_pytree(pytree=contains_all_leaves)
 
-        return jnp.alltrue(contains_all_leaves_flat)
+        return jnp.all(contains_all_leaves_flat)
 
     @property
     def is_np_flattenable(self) -> bool:
