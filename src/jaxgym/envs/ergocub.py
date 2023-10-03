@@ -1,27 +1,57 @@
 import dataclasses
+import functools
 import multiprocessing
 import pathlib
-from typing import Any, ClassVar, Optional
+import warnings
+from typing import Any, ClassVar, Dict, List, Optional
 
+warnings.simplefilter(action="ignore", category=FutureWarning)
+
+import functools
+import pathlib
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+
+import gymnasium as gym
 import jax.numpy as jnp
 import jax.random
 import jax_dataclasses
+import jaxgym.jax.pytree_space as spaces
+import matplotlib.pyplot as plt
+import mujoco
 import numpy as np
 import numpy.typing as npt
 import rod
+import stable_baselines3
+from gymnasium.experimental.vector.vector_env import VectorWrapper
+from jaxgym.jax import JaxDataclassEnv, JaxDataclassWrapper, JaxEnv, PyTree
+from jaxgym.vector.jax import FlattenSpacesVecWrapper, JaxVectorEnv
+from jaxgym.wrappers.jax import (
+    ActionNoiseWrapper,
+    ClipActionWrapper,
+    FlattenSpacesWrapper,
+    JaxTransformWrapper,
+    NaNHandlerWrapper,
+    SquashActionWrapper,
+    TimeLimit,
+    ToNumPyWrapper,
+)
 from meshcat_viz import MeshcatWorld
+from resolve_robotics_uri_py import resolve_robotics_uri
+from scipy.spatial.transform import Rotation
+from stable_baselines3 import PPO
+from stable_baselines3.common import vec_env as vec_env_sb
+from stable_baselines3.common.base_class import BaseAlgorithm
+from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecNormalize
 
-import jaxgym.jax.pytree_space as spaces
 import jaxsim.typing as jtp
-from jaxgym.jax import JaxDataclassEnv, JaxEnv
-from jaxgym.vector.jax import JaxVectorEnv
 from jaxsim import JaxSim
 from jaxsim.physics.algos.soft_contacts import SoftContactsParams
 from jaxsim.simulation import simulator_callbacks
 from jaxsim.simulation.ode_integration import IntegratorType
 from jaxsim.simulation.simulator import SimulatorData, VelRepr
 from jaxsim.utils import JaxsimDataclass, Mutability
-from resolve_robotics_uri_py import resolve_robotics_uri
 
 
 @jax_dataclasses.pytree_dataclass
@@ -140,14 +170,13 @@ class ErgoCubWalkFuncEnvV0(
     def __post_init__(self) -> None:
         """Environment initialization."""
 
-        # Dummy initialization (not needed here)
-        with self.mutable_context(mutability=Mutability.MUTABLE_NO_VALIDATION):
-            _ = self.jaxsim
-            model = self.jaxsim.get_model(model_name="ErgoCub")
+        model = self.jaxsim.get_model(model_name="ErgoCub")
 
         # Create the action space (static attribute)
+        # with self.mutable_context(mutability=Mutability.MUTABLE_NO_VALIDATION):
+        high = jnp.array([25.0] * model.dofs(), dtype=float)
+
         with self.mutable_context(mutability=Mutability.MUTABLE_NO_VALIDATION):
-            high = jnp.array([25.0] * model.dofs(), dtype=float)
             self._action_space = spaces.PyTree(low=-high, high=high)
 
         # Get joint limits
@@ -221,7 +250,7 @@ class ErgoCubWalkFuncEnvV0(
 
     def initial(self, rng: Any = None) -> StateType:
         """"""
-        assert isinstance(rng, jax.random.PRNGKey)
+        # assert isinstance(rng, jax.random.PRNGKey)
 
         # Split the key
         subkey1, subkey2 = jax.random.split(rng, num=2)
@@ -315,7 +344,6 @@ class ErgoCubWalkFuncEnvV0(
 
         # Compute the normalized gravity projection in the body frame
         W_R_B = model.base_orientation(dcm=True)
-        # W_gravity = state.simulator.gravity()
         W_gravity = self.jaxsim.gravity()
         B_gravity = W_R_B.T @ (W_gravity / jnp.linalg.norm(W_gravity))
 
@@ -334,9 +362,7 @@ class ErgoCubWalkFuncEnvV0(
             base_linear_velocity=model.base_velocity()[0:3],
             base_angular_velocity=model.base_velocity()[3:6],
             contact_state=model.in_contact(
-                link_names=[
-                    name for name in model.link_names() if name.endswith("_ankle")
-                ]
+                link_names=[name for name in model.link_names() if "_ankle" in name]
             ),
         )
 
@@ -527,15 +553,6 @@ class ErgoCubWalkVectorEnvV0(JaxVectorEnv):
 if __name__ == "__main__":
     """Stable Baselines"""
 
-    from typing import Optional
-
-    from jaxgym.wrappers.jax import (
-        FlattenSpacesWrapper,
-        JaxTransformWrapper,
-        TimeLimit,
-        ToNumPyWrapper,
-    )
-
     def make_jax_env(
         max_episode_steps: Optional[int] = 500, jit: bool = True
     ) -> JaxEnv:
@@ -562,23 +579,329 @@ if __name__ == "__main__":
             render_mode="meshcat_viz",
         )
 
-    env = make_jax_env(max_episode_steps=5, jit=False)
+    class CustomVecEnvSB(vec_env_sb.VecEnv):
+        """"""
 
-    obs, state_info = env.reset(seed=0)
-    _ = env.render()
-    raise
-    for _ in range(5):
-        action = env.action_space.sample()
-        # obs, reward, terminated, truncated, info = env.step(action=action)
-        obs, reward, terminated, truncated, info = env.step(
-            action=jnp.zeros_like(action)
+        metadata = {"render_modes": []}
+
+        def __init__(
+            self,
+            jax_vector_env: JaxVectorEnv | VectorWrapper,
+            log_rewards: bool = False,
+            # num_envs: int,
+            # observation_space: spaces.Space,
+            # action_space: spaces.Space,
+            # render_mode: Optional[str] = None,
+        ) -> None:
+            """"""
+
+            if not isinstance(jax_vector_env.unwrapped, JaxVectorEnv):
+                raise TypeError(type(jax_vector_env))
+
+            self.jax_vector_env = jax_vector_env
+
+            single_env_action_space: PyTree = (
+                jax_vector_env.unwrapped.single_action_space
+            )
+
+            single_env_observation_space: PyTree = (
+                jax_vector_env.unwrapped.single_observation_space
+            )
+
+            super().__init__(
+                num_envs=self.jax_vector_env.num_envs,
+                action_space=single_env_action_space.to_box(),
+                observation_space=single_env_observation_space.to_box(),
+            )
+
+            self.actions = np.zeros_like(self.jax_vector_env.action_space.sample())
+
+            # Initialize the RNG seed
+            self._seed = None
+            self.seed()
+
+            # Initialize the rewards logger
+            self.logger_rewards = [] if log_rewards else None
+
+        def reset(self) -> vec_env_sb.base_vec_env.VecEnvObs:
+            """"""
+
+            observations, state_infos = self.jax_vector_env.reset(seed=self._seed)
+            return np.array(observations)
+
+        def step_async(self, actions: np.ndarray) -> None:
+            self.actions = actions
+
+        @staticmethod
+        @functools.partial(jax.jit, static_argnames=("batch_size",))
+        def tree_inverse_transpose(
+            pytree: jtp.PyTree, batch_size: int
+        ) -> List[jtp.PyTree]:
+            """"""
+
+            return [
+                jax.tree_util.tree_map(lambda leaf: leaf[i], pytree)
+                for i in range(batch_size)
+            ]
+
+        def step_wait(self) -> vec_env_sb.base_vec_env.VecEnvStepReturn:
+            """"""
+
+            (
+                observations,
+                rewards,
+                terminals,
+                truncated,
+                step_infos,
+            ) = self.jax_vector_env.step(actions=self.actions)
+
+            done = np.logical_or(terminals, truncated)
+
+            # list_of_step_infos = [
+            #     jax.tree_util.tree_map(lambda l: l[i], step_infos)
+            #     for i in range(self.jax_vector_env.num_envs)
+            # ]
+
+            list_of_step_infos = self.tree_inverse_transpose(
+                pytree=step_infos, batch_size=self.jax_vector_env.num_envs
+            )
+
+            # def pytree_to_numpy(pytree: jtp.PyTree) -> jtp.PyTree:
+            #     return jax.tree_util.tree_map(lambda leaf: np.array(leaf), pytree)
+            #
+            # list_of_step_infos_numpy = [pytree_to_numpy(pt) for pt in list_of_step_infos]
+
+            list_of_step_infos_numpy = [
+                ToNumPyWrapper.pytree_to_numpy(pytree=pt) for pt in list_of_step_infos
+            ]
+
+            if self.logger_rewards is not None:
+                self.logger_rewards.append(np.array(rewards).mean())
+
+            return (
+                np.array(observations),
+                np.array(rewards),
+                np.array(done),
+                list_of_step_infos_numpy,
+            )
+
+        def close(self) -> None:
+            return self.jax_vector_env.close()
+
+        def get_attr(
+            self, attr_name: str, indices: vec_env_sb.base_vec_env.VecEnvIndices = None
+        ) -> List[Any]:
+            raise AttributeError
+            # raise NotImplementedError
+
+        def set_attr(
+            self,
+            attr_name: str,
+            value: Any,
+            indices: vec_env_sb.base_vec_env.VecEnvIndices = None,
+        ) -> None:
+            raise NotImplementedError
+
+        def env_method(
+            self,
+            method_name: str,
+            *method_args,
+            indices: vec_env_sb.base_vec_env.VecEnvIndices = None,
+            **method_kwargs,
+        ) -> List[Any]:
+            raise NotImplementedError
+
+        def env_is_wrapped(
+            self,
+            wrapper_class: Type[gym.Wrapper],
+            indices: vec_env_sb.base_vec_env.VecEnvIndices = None,
+        ) -> List[bool]:
+            return [False] * self.num_envs
+            # raise NotImplementedError
+
+        def seed(self, seed: Optional[int] = None) -> List[Union[None, int]]:
+            """"""
+
+            if seed is None:
+                seed = np.random.default_rng().integers(0, 2**32 - 1, dtype="uint32")
+
+            if np.array(seed, dtype="uint32") != np.array(seed):
+                raise ValueError(f"seed must be compatible with 'uint32' casting")
+
+            self._seed = seed
+            return [seed]
+
+            # _ = self.jax_vector_env.reset(seed=seed)
+            # return [None]
+
+    def make_vec_env_stable_baselines(
+        jax_dataclass_env: JaxDataclassEnv | JaxDataclassWrapper,
+        n_envs: int = 1,
+        seed: Optional[int] = None,
+        vec_env_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> vec_env_sb.VecEnv:
+        """"""
+
+        env = jax_dataclass_env
+
+        vec_env_kwargs = vec_env_kwargs if vec_env_kwargs is not None else dict()
+
+        vec_env = JaxVectorEnv(
+            func_env=env,
+            num_envs=n_envs,
+            **vec_env_kwargs,
         )
+
+        # Flatten the PyTree spaces to regular Box spaces
+        vec_env = FlattenSpacesVecWrapper(env=vec_env)
+
+        vec_env_sb = CustomVecEnvSB(jax_vector_env=vec_env, log_rewards=True)
+
+        if seed is not None:
+            _ = vec_env_sb.seed(seed=seed)
+
+        return vec_env_sb
+
+    import os
+
+    os.environ["IGN_GAZEBO_RESOURCE_PATH"] = "/conda/share/"  # DEBUG
+
+    max_episode_steps = 200
+    func_env = NaNHandlerWrapper(env=ErgoCubWalkFuncEnvV0())
+
+    if max_episode_steps is not None:
+        func_env = TimeLimit(env=func_env, max_episode_steps=max_episode_steps)
+
+    func_env = ClipActionWrapper(
+        env=SquashActionWrapper(env=ActionNoiseWrapper(env=func_env)),
+    )
+
+    vec_env = make_vec_env_stable_baselines(
+        jax_dataclass_env=func_env,
+        n_envs=512,
+        seed=42,
+        vec_env_kwargs=dict(
+            jit_compile=True,
+        ),
+    )
+
+    vec_env = VecMonitor(
+        venv=VecNormalize(
+            venv=vec_env,
+            training=True,
+            norm_obs=True,
+            norm_reward=True,
+            clip_obs=10.0,
+            clip_reward=10.0,
+            gamma=0.95,
+            epsilon=1e-8,
+        )
+    )
+
+    vec_env.venv.venv.logger_rewards = []
+    seed = vec_env.seed(seed=7)[0]
+    _ = vec_env.reset()
+
+    import torch as th
+
+    model = PPO(
+        "MlpPolicy",
+        env=vec_env,
+        n_steps=5,  # in the vector env -> real ones are x512
+        batch_size=256,
+        n_epochs=10,
+        gamma=0.95,
+        gae_lambda=0.9,
+        clip_range=0.1,
+        normalize_advantage=True,
+        target_kl=0.025,
+        verbose=1,
+        learning_rate=0.000_300,
+        policy_kwargs=dict(
+            activation_fn=th.nn.ReLU,
+            net_arch=dict(pi=[512, 512], vf=[512, 512]),
+            log_std_init=np.log(0.05),
+        ),
+    )
+
+    print(model.policy)
+
+    model = model.learn(total_timesteps=50_000, progress_bar=False)
 
     # =========
     # Visualize
     # =========
 
     visualize = False
+
+    def visualizer(
+        env: JaxEnv | Callable[[None], JaxEnv], policy: BaseAlgorithm
+    ) -> Callable[[Optional[int]], None]:
+        """"""
+
+        import numpy as np
+        import rod
+        from loop_rate_limiters import RateLimiter
+        from meshcat_viz import MeshcatWorld
+
+        from jaxsim import JaxSim
+
+        # Open the visualizer
+        world = MeshcatWorld()
+        world.open()
+
+        # Create the JaxSim environment and get the simulator
+        env = env() if isinstance(env, Callable) else env
+        sim: JaxSim = env.unwrapped.func_env.unwrapped.jaxsim
+
+        # Extract the SDF string from the simulated model
+        jaxsim_model = sim.get_model(model_name="cartpole")
+        rod_model = jaxsim_model.physics_model.description.extra_info["sdf_model"]
+        rod_sdf = rod.Sdf(model=rod_model, version="1.7")
+        sdf_string = rod_sdf.serialize(pretty=True)
+
+        # Insert the model from a URDF/SDF resource
+        model_name = world.insert_model(model_description=sdf_string, is_urdf=False)
+
+        # Create the visualization function
+        def rollout(seed: Optional[int] = None) -> None:
+            """"""
+
+            # Reset the environment
+            observation, state_info = env.reset(seed=seed)
+
+            # Initialize the model state with the initial observation
+            world.update_model(
+                model_name=model_name,
+                joint_names=["linear", "pivot"],
+                joint_positions=np.array([observation[0], observation[2]]),
+            )
+
+            rtf = 1.0
+            down_sampling = 1
+            rate = RateLimiter(frequency=float(rtf / (sim.dt() * down_sampling)))
+
+            done = False
+
+            # Visualization loop
+            while not done:
+                action, _ = policy.predict(observation=observation, deterministic=True)
+                print(action)
+                observation, _, terminated, truncated, _ = env.step(action)
+                done = terminated or truncated
+
+                world.update_model(
+                    model_name=model_name,
+                    joint_names=["linear", "pivot"],
+                    joint_positions=np.array([observation[0], observation[2]]),
+                )
+
+                print(done)
+                rate.sleep()
+
+            print("done")
+
+        return rollout
 
     if visualize:
         rollout_visualizer = visualizer(env=lambda: make_jax_env(1_000), policy=model)
