@@ -1,10 +1,10 @@
 from typing import Any, Callable, Generic
 
-import numpy.typing as npt
-import jax.numpy as jnp
 import jax.flatten_util
+import jax.numpy as jnp
 import jax.tree_util
 import jax_dataclasses
+import numpy.typing as npt
 from gymnasium.experimental.functional import (
     ActType,
     ObsType,

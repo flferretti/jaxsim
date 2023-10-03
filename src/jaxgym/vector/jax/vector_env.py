@@ -1,5 +1,4 @@
 import copy
-from jaxsim import logging
 from typing import Any, Sequence
 
 import jax.flatten_util
@@ -23,6 +22,7 @@ import jaxgym.jax.pytree_space as spaces
 import jaxsim.typing as jtp
 from jaxgym.jax import JaxDataclassEnv, JaxDataclassWrapper
 from jaxgym.wrappers.jax import JaxTransformWrapper, TimeLimit
+from jaxsim import logging
 from jaxsim.utils import not_tracing
 
 
@@ -128,7 +128,7 @@ class JaxVectorEnv(VectorEnv[ObsType, ActType, ArrayType]):
         #     self.render_state = None
 
         # Initialize the RNGs with a random seed
-        seed = np.random.default_rng().integers(0, 2**32 - 1, dtype="uint32")
+        seed = np.random.default_rng().integers(0, 2 ** 32 - 1, dtype="uint32")
         self._np_random, _ = seeding.np_random(seed=int(seed))
         self._key = jax.random.PRNGKey(seed=seed)
 

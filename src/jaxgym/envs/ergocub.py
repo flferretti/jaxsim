@@ -1,28 +1,28 @@
 import dataclasses
 import functools
 import multiprocessing
-import pathlib
+import os
 import warnings
-from typing import Any, ClassVar, Dict, List, Optional
-
-warnings.simplefilter(action="ignore", category=FutureWarning)
-
-import functools
-import pathlib
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 import gymnasium as gym
 import jax.numpy as jnp
 import jax.random
 import jax_dataclasses
-import jaxgym.jax.pytree_space as spaces
-import matplotlib.pyplot as plt
-import mujoco
 import numpy as np
 import numpy.typing as npt
 import rod
-import stable_baselines3
 from gymnasium.experimental.vector.vector_env import VectorWrapper
+from meshcat_viz import MeshcatWorld
+from resolve_robotics_uri_py import resolve_robotics_uri
+from stable_baselines3 import PPO
+from stable_baselines3.common import vec_env as vec_env_sb
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import VecMonitor, VecNormalize
+from torch import nn
+
+import jaxgym.jax.pytree_space as spaces
+import jaxsim.typing as jtp
 from jaxgym.jax import JaxDataclassEnv, JaxDataclassWrapper, JaxEnv, PyTree
 from jaxgym.vector.jax import FlattenSpacesVecWrapper, JaxVectorEnv
 from jaxgym.wrappers.jax import (
@@ -35,23 +35,14 @@ from jaxgym.wrappers.jax import (
     TimeLimit,
     ToNumPyWrapper,
 )
-from meshcat_viz import MeshcatWorld
-from resolve_robotics_uri_py import resolve_robotics_uri
-from scipy.spatial.transform import Rotation
-from stable_baselines3 import PPO
-from stable_baselines3.common import vec_env as vec_env_sb
-from stable_baselines3.common.base_class import BaseAlgorithm
-from stable_baselines3.common.env_checker import check_env
-from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecNormalize
-
-import jaxsim.typing as jtp
 from jaxsim import JaxSim
 from jaxsim.physics.algos.soft_contacts import SoftContactsParams
 from jaxsim.simulation import simulator_callbacks
 from jaxsim.simulation.ode_integration import IntegratorType
 from jaxsim.simulation.simulator import SimulatorData, VelRepr
 from jaxsim.utils import JaxsimDataclass, Mutability
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
 @jax_dataclasses.pytree_dataclass
@@ -173,8 +164,8 @@ class ErgoCubWalkFuncEnvV0(
         model = self.jaxsim.get_model(model_name="ErgoCub")
 
         # Create the action space (static attribute)
-        # with self.mutable_context(mutability=Mutability.MUTABLE_NO_VALIDATION):
-        high = jnp.array([25.0] * model.dofs(), dtype=float)
+        with self.mutable_context(mutability=Mutability.MUTABLE_NO_VALIDATION):
+            high = jnp.array([25.0] * model.dofs(), dtype=float)
 
         with self.mutable_context(mutability=Mutability.MUTABLE_NO_VALIDATION):
             self._action_space = spaces.PyTree(low=-high, high=high)
@@ -250,7 +241,7 @@ class ErgoCubWalkFuncEnvV0(
 
     def initial(self, rng: Any = None) -> StateType:
         """"""
-        # assert isinstance(rng, jax.random.PRNGKey)
+        assert jax.dtypes.issubdtype(rng, jax.dtypes.prng_key)
 
         # Split the key
         subkey1, subkey2 = jax.random.split(rng, num=2)
@@ -723,7 +714,7 @@ if __name__ == "__main__":
             """"""
 
             if seed is None:
-                seed = np.random.default_rng().integers(0, 2**32 - 1, dtype="uint32")
+                seed = np.random.default_rng().integers(0, 2 ** 32 - 1, dtype="uint32")
 
             if np.array(seed, dtype="uint32") != np.array(seed):
                 raise ValueError(f"seed must be compatible with 'uint32' casting")
@@ -762,8 +753,6 @@ if __name__ == "__main__":
 
         return vec_env_sb
 
-    import os
-
     os.environ["IGN_GAZEBO_RESOURCE_PATH"] = "/conda/share/"  # DEBUG
 
     max_episode_steps = 200
@@ -778,7 +767,7 @@ if __name__ == "__main__":
 
     vec_env = make_vec_env_stable_baselines(
         jax_dataclass_env=func_env,
-        n_envs=512,
+        n_envs=6000,
         seed=42,
         vec_env_kwargs=dict(
             jit_compile=True,
@@ -789,20 +778,12 @@ if __name__ == "__main__":
         venv=VecNormalize(
             venv=vec_env,
             training=True,
-            norm_obs=True,
-            norm_reward=True,
-            clip_obs=10.0,
-            clip_reward=10.0,
-            gamma=0.95,
-            epsilon=1e-8,
         )
     )
 
     vec_env.venv.venv.logger_rewards = []
     seed = vec_env.seed(seed=7)[0]
     _ = vec_env.reset()
-
-    import torch as th
 
     model = PPO(
         "MlpPolicy",
@@ -815,10 +796,10 @@ if __name__ == "__main__":
         clip_range=0.1,
         normalize_advantage=True,
         target_kl=0.025,
-        verbose=1,
+        verbose=2,
         learning_rate=0.000_300,
         policy_kwargs=dict(
-            activation_fn=th.nn.ReLU,
+            activation_fn=nn.ReLU,
             net_arch=dict(pi=[512, 512], vf=[512, 512]),
             log_std_init=np.log(0.05),
         ),
@@ -826,87 +807,4 @@ if __name__ == "__main__":
 
     print(model.policy)
 
-    model = model.learn(total_timesteps=50_000, progress_bar=False)
-
-    # =========
-    # Visualize
-    # =========
-
-    visualize = False
-
-    def visualizer(
-        env: JaxEnv | Callable[[None], JaxEnv], policy: BaseAlgorithm
-    ) -> Callable[[Optional[int]], None]:
-        """"""
-
-        import numpy as np
-        import rod
-        from loop_rate_limiters import RateLimiter
-        from meshcat_viz import MeshcatWorld
-
-        from jaxsim import JaxSim
-
-        # Open the visualizer
-        world = MeshcatWorld()
-        world.open()
-
-        # Create the JaxSim environment and get the simulator
-        env = env() if isinstance(env, Callable) else env
-        sim: JaxSim = env.unwrapped.func_env.unwrapped.jaxsim
-
-        # Extract the SDF string from the simulated model
-        jaxsim_model = sim.get_model(model_name="cartpole")
-        rod_model = jaxsim_model.physics_model.description.extra_info["sdf_model"]
-        rod_sdf = rod.Sdf(model=rod_model, version="1.7")
-        sdf_string = rod_sdf.serialize(pretty=True)
-
-        # Insert the model from a URDF/SDF resource
-        model_name = world.insert_model(model_description=sdf_string, is_urdf=False)
-
-        # Create the visualization function
-        def rollout(seed: Optional[int] = None) -> None:
-            """"""
-
-            # Reset the environment
-            observation, state_info = env.reset(seed=seed)
-
-            # Initialize the model state with the initial observation
-            world.update_model(
-                model_name=model_name,
-                joint_names=["linear", "pivot"],
-                joint_positions=np.array([observation[0], observation[2]]),
-            )
-
-            rtf = 1.0
-            down_sampling = 1
-            rate = RateLimiter(frequency=float(rtf / (sim.dt() * down_sampling)))
-
-            done = False
-
-            # Visualization loop
-            while not done:
-                action, _ = policy.predict(observation=observation, deterministic=True)
-                print(action)
-                observation, _, terminated, truncated, _ = env.step(action)
-                done = terminated or truncated
-
-                world.update_model(
-                    model_name=model_name,
-                    joint_names=["linear", "pivot"],
-                    joint_positions=np.array([observation[0], observation[2]]),
-                )
-
-                print(done)
-                rate.sleep()
-
-            print("done")
-
-        return rollout
-
-    if visualize:
-        rollout_visualizer = visualizer(env=lambda: make_jax_env(1_000), policy=model)
-
-        import time
-
-        time.sleep(3)
-        rollout_visualizer(None)
+    model = model.learn(total_timesteps=50000, progress_bar=True)

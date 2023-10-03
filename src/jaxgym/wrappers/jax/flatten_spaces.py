@@ -12,8 +12,8 @@ from gymnasium.experimental.functional import (
     TerminalType,
 )
 
-from jaxsim import logging
 from jaxgym.jax import JaxDataclassWrapper
+from jaxsim import logging
 
 WrapperStateType = StateType
 WrapperObsType = jnp.ndarray
