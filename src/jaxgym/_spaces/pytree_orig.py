@@ -43,10 +43,10 @@ class PyTree(Space):
         #     )
         # )
         #
-        # if not jnp.alltrue(dtypes_supported):
-        # # if not_tracing(low) and not jnp.alltrue(dtypes_supported):
-        # # if jnp.where(jnp.array([tracing(low), jnp.alltrue(dtypes_supported)]).any(), False, True):
-        # # if np.any([not_tracing(low), jnp.alltrue(dtypes_supported)]):
+        # if not jnp.all(dtypes_supported):
+        # # if not_tracing(low) and not jnp.all(dtypes_supported):
+        # # if jnp.where(jnp.array([tracing(low), jnp.all(dtypes_supported)]).any(), False, True):
+        # # if np.any([not_tracing(low), jnp.all(dtypes_supported)]):
         # # if not_tracing(low):
         #     raise ValueError(
         #         "Either low or high pytrees have attributes with unsupported dtype"
@@ -58,8 +58,8 @@ class PyTree(Space):
         #     )
         # )
         #
-        # if not jnp.alltrue(shape_match):
-        # # if not_tracing(low) and not jnp.alltrue(shape_match):
+        # if not jnp.all(shape_match):
+        # # if not_tracing(low) and not jnp.all(shape_match):
         #     raise ValueError("Wrong shape of low and high attributes")
         #
         # dtype_match, _ = jax.flatten_util.ravel_pytree(
@@ -68,8 +68,8 @@ class PyTree(Space):
         #     )
         # )
         #
-        # if not jnp.alltrue(dtype_match):
-        # # if not_tracing(low) and not jnp.alltrue(dtype_match):
+        # if not jnp.all(dtype_match):
+        # # if not_tracing(low) and not jnp.all(dtype_match):
         #     raise ValueError("Wrong dtype of low and high attributes")
 
         # Flatten the pytrees
@@ -147,9 +147,7 @@ class PyTree(Space):
 
         def is_inside_bounds(x, low, high):
             return jax.lax.select(
-                pred=jnp.alltrue(
-                    jnp.array([jnp.alltrue(x >= low), jnp.alltrue(x <= high)])
-                ),
+                pred=jnp.all(jnp.array([jnp.all(x >= low), jnp.all(x <= high)])),
                 on_true=True,
                 on_false=False,
             )
@@ -163,7 +161,7 @@ class PyTree(Space):
 
         contains_all_leaves_flat, _ = jax.flatten_util.ravel_pytree(contains_all_leaves)
 
-        return jnp.alltrue(contains_all_leaves_flat)
+        return jnp.all(contains_all_leaves_flat)
 
     @property
     def is_np_flattenable(self) -> bool:
