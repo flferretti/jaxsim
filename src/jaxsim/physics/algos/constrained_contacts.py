@@ -1,13 +1,101 @@
-import jax_dataclasses
+from __future__ import annotations
+
 import jax.numpy as jnp
+import jax_dataclasses
 import jaxopt
 import numpy.typing as npt
+
+import jaxsim.typing as jtp
+from jaxsim.api.data import JaxSimModelData
+from jaxsim.api.model import JaxSimModel
 from jaxsim.high_level.model import Model
 from jaxsim.physics.terrain import FlatTerrain, Terrain
 
 
 @jax_dataclasses.pytree_dataclass
-class ConstrainedContactParams:
+class ConstrainedContactsState(JaxsimDataclass):
+    """
+    State of the constrained contacts model.
+
+    Attributes:
+        tangential_deformation:
+            The tangential deformation of the material at each collidable point.
+    """
+
+    tangential_deformation: jtp.Matrix
+
+    @staticmethod
+    def build(
+        tangential_deformation: jtp.Matrix | None = None,
+        number_of_collidable_points: int | None = None,
+    ) -> ConstrainedContactsState:
+        """"""
+
+        tangential_deformation = (
+            tangential_deformation
+            if tangential_deformation is not None
+            else jnp.zeros(shape=(3, number_of_collidable_points))
+        )
+
+        return ConstrainedContactsState(
+            tangential_deformation=jnp.array(tangential_deformation, dtype=float)
+        )
+
+    @staticmethod
+    def build_from_physics_model(
+        tangential_deformation: jtp.Matrix | None = None,
+        physics_model: jaxsim.physics.model.physics_model.PhysicsModel | None = None,
+    ) -> ConstrainedContactsState:
+        """"""
+
+        return ConstrainedContactsState.build(
+            tangential_deformation=tangential_deformation,
+            number_of_collidable_points=len(physics_model.gc.body),
+        )
+
+    @staticmethod
+    def zero(
+        physics_model: jaxsim.physics.model.physics_model.PhysicsModel,
+    ) -> ConstrainedContactsState:
+        """
+        Modify the ConstrainedContactsState instance imposing zero tangential deformation.
+
+        Args:
+            physics_model: The physics model.
+
+        Returns:
+            A ConstrainedContactsState instance with zero tangential deformation.
+        """
+
+        return ConstrainedContactsState.build_from_physics_model(
+            physics_model=physics_model
+        )
+
+    def valid(
+        self, physics_model: jaxsim.physics.model.physics_model.PhysicsModel
+    ) -> bool:
+        """
+        Check if the soft contacts state has valid shape.
+
+        Args:
+            physics_model: The physics model.
+
+        Returns:
+            True if the state has a valid shape, otherwise False.
+        """
+
+        from jaxsim.simulation.utils import check_valid_shape
+
+        return check_valid_shape(
+            what="tangential_deformation",
+            shape=self.tangential_deformation.shape,
+            expected_shape=(3, len(physics_model.gc.body)),
+            valid=True,
+        )
+
+
+@jax_dataclasses.pytree_dataclass
+class ConstrainedContactsParams:
     """Parameters of the constrained contacts model."""
 
     timeconst: float = dataclasses.field(
@@ -35,9 +123,9 @@ class ConstrainedContactParams:
         width: float = 0.1,
         mid: float = 0.5,
         power: float = 1.0,
-    ) -> "ConstrainedContactParams":
+    ) -> ConstrainedContactsParams:
         """
-        Create a ConstrainedContactParams instance with specified parameters.
+        Create a ConstrainedContactsParams instance with specified parameters.
 
         Args:
             timeconst (float, optional): The time constant. Defaults to 0.1.
@@ -49,10 +137,10 @@ class ConstrainedContactParams:
             power (float, optional): The power of the damping function. Defaults to 1.0.
 
         Returns:
-            ConstrainedContactParams: A ConstrainedContactParams instance with the specified parameters.
+            ConstrainedContactsParams: A ConstrainedContactsParams instance with the specified parameters.
         """
 
-        return ConstrainedContactParams(
+        return ConstrainedContactsParams(
             timeconst=jnp.array(timeconst, dtype=float),
             dampratio=jnp.array(dampratio, dtype=float),
             dmin=jnp.array(dmin, dtype=float),
@@ -64,38 +152,38 @@ class ConstrainedContactParams:
 
 
 @jax_dataclasses.pytree_dataclass
-class ConstrainedContact:
+class ConstrainedContacts:
     """Constrained contacts model."""
 
-    parameters: SoftContactsParams = dataclasses.field(
-        default_factory=ConstrainedContactParams
+    parameters: ConstrainedContactsParams = dataclasses.field(
+        default_factory=ConstrainedContactsParams
     )
 
     terrain: Terrain = dataclasses.field(default_factory=FlatTerrain)
 
     def contact_model(
         self,
-        model: high_level.Model,
+        model: JaxSimModel,
         position: jtp.Vector,
         velocity: jtp.Vector,
         tangential_deformation: jtp.Vector | None = None,
-    ) -> Tuple[jtp.Vector, jtp.Vector]:
+    ) -> tuple[jtp.Vector, jtp.Vector]:
         """
         Compute the contact forces.
 
         Args:
-            model (PhysicsModel): The physics model.
+            model (JaxSimModel): The jaxsim model.
             position (jtp.Vector): The position of the collidable point.
             velocity (jtp.Vector): The linear velocity of the collidable point.
             tangential_deformation (jtp.Vector, optional): The tangential deformation. Defaults to None.
 
         Returns:
-            Tuple[jtp.Vector, jtp.Vector]: A tuple containing the contact force and material deformation rate.
+            tuple[jtp.Vector, jtp.Vector]: A tuple containing the contact force and material deformation rate.
         """
 
         def _imp_aref(
             self: Self, position: jax.Array, velocity: jax.Array
-        ) -> Tuple[jax.Array, jax.Array]:
+        ) -> tuple[jax.Array, jax.Array]:
             """Calculates impedance and offset acceleration in constraint frame.
 
             Args:
@@ -144,16 +232,16 @@ class ConstrainedContact:
             return impedance, aref
 
         def point_jacobian(
-            sys: System,
+            model: JaxSimModel,
             com: jax.Array,
             cdof: Motion,
             position: jax.Array,
             link_idx: jax.Array,
-        ) -> Motion:
+        ) -> jtp.Array:
             """Calculates the jacobian of a point on a link.
 
             Args:
-                sys: a brax system
+                model: the jaxsim model
                 com: center of mass position
                 cdof: dofs in com frame
                 position: position in world frame to calculate the jacobian
@@ -171,94 +259,94 @@ class ConstrainedContact:
                 return mask
 
             mask = scan.tree(
-                sys, mask_fn, "l", jnp.arange(sys.num_links()), reverse=True
+                model, mask_fn, "l", jnp.arange(model.num_links()), reverse=True
             )
-            cdof = jax.vmap(lambda a, b: a * b)(cdof, jnp.take(mask, sys.dof_link()))
+            cdof = jax.vmap(lambda a, b: a * b)(cdof, jnp.take(mask, model.dof_link()))
             off = Transform.create(pos=position - com[link_idx])
             return off.vmap(in_axes=(None, 0)).do(cdof)
 
-        def jac_limit(
-            sys: System, state: State
-        ) -> Tuple[jax.Array, jax.Array, jax.Array]:
+        def jacobian_limit(
+            model: JaxSimModel, data: JaxSimModelData
+        ) -> tuple[jax.Array, jax.Array, jax.Array]:
             """Calculates the jacobian for angle limits in dof frame.
 
             Args:
-                sys: a brax system
-                state: generalized state
+                model: the jaxsim model
+                data: generalized data
 
             Returns:
-                jac: the angle limit jacobian
+                J: the angle limit jacobian
                 pos: angle in constraint frame
                 diag: approximate diagonal of A matrix
             """
-            if sys.dof.limit is None:
-                return jnp.zeros((0, sys.qd_size())), jnp.zeros((0,)), jnp.zeros((0,))
+            if model.dof.limit is None:
+                return jnp.zeros((0, model.qd_size())), jnp.zeros((0,)), jnp.zeros((0,))
 
             # determine q and qd indices for non-free joints
-            q_idx, qd_idx = sys.q_idx("123"), sys.qd_idx("123")
+            q_idx, qd_idx = model.q_idx("123"), model.qd_idx("123")
 
-            pos_min = state.q[q_idx] - sys.dof.limit[0][qd_idx]
-            pos_max = sys.dof.limit[1][qd_idx] - state.q[q_idx]
+            pos_min = data.q[q_idx] - model.dof.limit[0][qd_idx]
+            pos_max = model.dof.limit[1][qd_idx] - data.q[q_idx]
             pos = jnp.minimum(jnp.minimum(pos_min, pos_max), 0)
 
             side = ((pos_min < pos_max) * 2 - 1) * (pos < 0)
-            jac = jax.vmap(jnp.multiply)(jnp.eye(sys.qd_size())[qd_idx], side)
-            params = sys.dof.solver_params[qd_idx]
-            imp, aref = jax.vmap(_imp_aref)(params, pos, jac @ state.qd)
-            diag = sys.dof.invweight[qd_idx] * (pos < 0) * (1 - imp) / (imp + 1e-8)
+            J = jax.vmap(jnp.multiply)(jnp.eye(model.qd_size())[qd_idx], side)
+            params = model.dof.solver_params[qd_idx]
+            imp, aref = jax.vmap(_imp_aref)(params, pos, J @ data.qd)
+            diag = model.dof.invweight[qd_idx] * (pos < 0) * (1 - imp) / (imp + 1e-8)
             aref = jax.vmap(lambda x, y: x * y)(aref, (pos < 0))
 
-            return jac, diag, aref
+            return J, diag, aref
 
-        def jac_contact(
-            sys: System, state: State
-        ) -> Tuple[jax.Array, jax.Array, jax.Array]:
+        def jacobian_contact(
+            model: JaxsimModel, data: JaxsimModelData
+        ) -> tuple[jax.Array, jax.Array, jax.Array]:
             """Calculates the jacobian for contact constraints.
 
             Args:
-                sys: the brax system
-                state: generalized state
+                model: the jaxsim model
+                data: the jaxsim model data
 
             Returns:
-                jac: the contact jacobian
+                J: the contact jacobian
                 pos: contact position in constraint frame
                 diag: approximate diagonal of A matrix
             """
-            c = contact.get(sys, state.x)
+            c = contact.get(model, data.x)
 
             if c is None:
-                return jnp.zeros((0, sys.qd_size())), jnp.zeros((0,)), jnp.zeros((0,))
+                return jnp.zeros((0, model.qd_size())), jnp.zeros((0,)), jnp.zeros((0,))
 
             def row_fn(c):
                 link_a, link_b = c.link_idx
-                a = point_jacobian(sys, state.root_com, state.cdof, c.pos, link_a)
-                b = point_jacobian(sys, state.root_com, state.cdof, c.pos, link_b)
+                a = point_jacobian(model, data.root_com, data.cdof, c.pos, link_a)
+                b = point_jacobian(model, data.root_com, data.cdof, c.pos, link_b)
                 diff = b.vel - a.vel
 
                 # 4 pyramidal friction directions
-                jac = []
+                J = []
                 for d in -c.frame[1:]:
                     for f in [-c.friction[0], c.friction[0]]:
-                        jac.append(diff @ (d * f + c.frame[0]))
+                        J.append(diff @ (d * f + c.frame[0]))
 
-                jac = jnp.stack(jac)
+                J = jnp.stack(J)
                 pos = jnp.tile(c.dist, 4)
                 solver_params = jnp.concatenate([c.solref, c.solimp])
-                imp, aref = _imp_aref(solver_params, pos, jac @ state.qd)
+                imp, aref = _imp_aref(solver_params, pos, J @ data.qd)
                 t = (
-                    sys.link.invweight[link_a] * (link_a > -1)
-                    + sys.link.invweight[link_b]
+                    model.link.invweight[link_a] * (link_a > -1)
+                    + model.link.invweight[link_b]
                 )
                 diag = jnp.tile(t + c.friction[0] * c.friction[0] * t, 4)
                 diag *= 2 * c.friction[0] * c.friction[0] * (1 - imp) / (imp + 1e-8)
 
-                return jax.tree_map(lambda x: x * (c.dist < 0), (jac, diag, aref))
+                return jax.tree_map(lambda x: x * (c.dist < 0), (J, diag, aref))
 
             return jax.tree_map(jnp.concatenate, jax.vmap(row_fn)(c))
 
-            jpds = jac_contact(sys, state), jac_limit(sys, state)
+            jpds = jacobian_contact(model, data), jacobian_limit(model, data)
 
-            jac, diag, aref = jax.tree_map(lambda *x: jnp.concatenate(x), *jpds)
+            J, diag, aref = jax.tree_map(lambda *x: jnp.concatenate(x), *jpds)
 
             # Unpack the position of the collidable point
             px, py, pz = W_p_C = position.squeeze()
