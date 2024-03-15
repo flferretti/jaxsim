@@ -9,6 +9,7 @@ import jaxsim.typing as jtp
 from jaxsim import VelRepr
 from jaxsim.integrators.common import Time
 from jaxsim.math.quaternion import Quaternion
+from jaxsim.physics.algos.constrained_contacts import ConstrainedContactsState
 from jaxsim.physics.algos.soft_contacts import SoftContactsState
 from jaxsim.physics.model.physics_model_state import PhysicsModelState
 from jaxsim.simulation.ode_data import ODEState
@@ -238,6 +239,7 @@ def system_dynamics(
     model: js.model.JaxSimModel,
     data: js.data.JaxSimModelData,
     *,
+    contact_model: ConstrainedContactsState | SoftContactsState = SoftContactsState,
     joint_forces: jtp.Vector | None = None,
     external_forces: jtp.Vector | None = None,
 ) -> tuple[ODEState, dict[str, Any]]:
@@ -279,8 +281,12 @@ def system_dynamics(
             base_angular_velocity=W_v̇_WB[3:6],
             joint_velocities=s̈,
         ),
-        soft_contacts_state=SoftContactsState.build(
-            tangential_deformation=ṁ,
+        contacts_state=(
+            contact_model.build(
+                tangential_deformation=ṁ,
+            )
+            if isinstance(contact_model, SoftContactsState)
+            else contact_model.build()
         ),
     )
 
