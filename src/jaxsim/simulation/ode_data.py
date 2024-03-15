@@ -2,6 +2,7 @@ import jax.flatten_util
 import jax_dataclasses
 
 import jaxsim.typing as jtp
+from jaxsim.physics.algos.constrained_contacts import ConstrainedContactsState
 from jaxsim.physics.algos.soft_contacts import SoftContactsState
 from jaxsim.physics.model.physics_model import PhysicsModel
 from jaxsim.physics.model.physics_model_state import (
@@ -47,12 +48,12 @@ class ODEState(JaxsimDataclass):
     """"""
 
     physics_model: PhysicsModelState
-    soft_contacts: SoftContactsState
+    soft_contacts: SoftContactsState | ConstrainedContactsState
 
     @staticmethod
     def build(
         physics_model_state: PhysicsModelState | None = None,
-        soft_contacts_state: SoftContactsState | None = None,
+        contacts_state: SoftContactsState | ConstrainedContactsState | None = None,
         physics_model: PhysicsModel | None = None,
     ) -> "ODEState":
         """"""
@@ -63,15 +64,13 @@ class ODEState(JaxsimDataclass):
             else PhysicsModelState.zero(physics_model=physics_model)
         )
 
-        soft_contacts_state = (
-            soft_contacts_state
-            if soft_contacts_state is not None
+        contacts_state = (
+            contacts_state
+            if contacts_state is not None
             else SoftContactsState.zero(physics_model=physics_model)
         )
 
-        return ODEState(
-            physics_model=physics_model_state, soft_contacts=soft_contacts_state
-        )
+        return ODEState(physics_model=physics_model_state, contacts=contacts_state)
 
     @staticmethod
     def deserialize(data: jtp.VectorJax, physics_model: PhysicsModel) -> "ODEState":
@@ -84,7 +83,6 @@ class ODEState(JaxsimDataclass):
     def zero(physics_model: PhysicsModel) -> "ODEState":
         model_state = ODEState(
             physics_model=PhysicsModelState.zero(physics_model=physics_model),
-            soft_contacts=SoftContactsState.zero(physics_model=physics_model),
         )
 
         assert model_state.valid(physics_model)
@@ -93,4 +91,4 @@ class ODEState(JaxsimDataclass):
     def valid(self, physics_model: PhysicsModel) -> bool:
         return self.physics_model.valid(
             physics_model=physics_model
-        ) and self.soft_contacts.valid(physics_model=physics_model)
+        ) and self.contacts.valid(physics_model=physics_model)
