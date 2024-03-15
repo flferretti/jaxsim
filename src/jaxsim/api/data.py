@@ -19,7 +19,16 @@ import jaxsim.physics.model.physics_model
 import jaxsim.physics.model.physics_model_state
 import jaxsim.typing as jtp
 from jaxsim.high_level.common import VelRepr
-from jaxsim.physics.algos import soft_contacts
+from jaxsim.physics.algos.constrained_contacts import (
+    ConstrainedContacts,
+    ConstrainedContactsParams,
+    ConstrainedContactsState,
+)
+from jaxsim.physics.algos.soft_contacts import (
+    SoftContacts,
+    SoftContactsParams,
+    SoftContactsState,
+)
 from jaxsim.simulation.ode_data import ODEState
 from jaxsim.utils import Mutability
 
@@ -41,7 +50,7 @@ class JaxSimModelData(common.ModelDataWithVelocityRepresentation):
 
     gravity: jtp.Array
 
-    soft_contacts_params: soft_contacts.SoftContactsParams = dataclasses.field(
+    contact_params: SoftContactsParams | ConstrainedContactParams = dataclasses.field(
         repr=False
     )
     time_ns: jtp.Int = dataclasses.field(
@@ -96,8 +105,8 @@ class JaxSimModelData(common.ModelDataWithVelocityRepresentation):
         base_angular_velocity: jtp.Vector | None = None,
         joint_velocities: jtp.Vector | None = None,
         gravity: jtp.Vector | None = None,
-        soft_contacts_state: soft_contacts.SoftContactsState | None = None,
-        soft_contacts_params: soft_contacts.SoftContactsParams | None = None,
+        contacts_state: SoftContactsState | ConstrainedContactsState | None = None,
+        contacts_params: SoftContactsParams | ConstrainedContactsParams | None = None,
         velocity_representation: VelRepr = VelRepr.Inertial,
         time: jtp.FloatLike | None = None,
     ) -> JaxSimModelData:
@@ -115,8 +124,8 @@ class JaxSimModelData(common.ModelDataWithVelocityRepresentation):
                 The base angular velocity in the selected representation.
             joint_velocities: The joint velocities.
             gravity: The gravity 3D vector.
-            soft_contacts_state: The state of the soft contacts.
-            soft_contacts_params: The parameters of the soft contacts.
+            contacts_state: The state of the soft contacts.
+            contacts_params: The parameters of the soft contacts.
             velocity_representation: The velocity representation to use.
             time: The time at which the state is created.
 
@@ -164,9 +173,9 @@ class JaxSimModelData(common.ModelDataWithVelocityRepresentation):
             else jnp.array(0, dtype=jnp.uint64)
         )
 
-        soft_contacts_params = (
-            soft_contacts_params
-            if soft_contacts_params is not None
+        contacts_params = (
+            contacts_params
+            if contacts_params is not None
             else js.contact.estimate_good_soft_contacts_parameters(model=model)
         )
 
@@ -194,7 +203,7 @@ class JaxSimModelData(common.ModelDataWithVelocityRepresentation):
                 base_angular_velocity=v_WB[3:6].astype(float),
                 joint_velocities=joint_velocities.astype(float),
             ),
-            soft_contacts_state=soft_contacts_state,
+            contacts_state=contacts_state,
         )
 
         if not ode_state.valid(physics_model=model.physics_model):
@@ -204,7 +213,7 @@ class JaxSimModelData(common.ModelDataWithVelocityRepresentation):
             time_ns=time_ns,
             state=ode_state,
             gravity=gravity.astype(float),
-            soft_contacts_params=soft_contacts_params,
+            contacts_params=contacts_params,
             velocity_representation=velocity_representation,
         )
 
