@@ -210,13 +210,13 @@ def in_contact(
 
     below_terrain = W_p_Ci[:, 2] <= terrain_height
 
-    links_in_contact = jax.vmap(
-        lambda link_index: jnp.where(
-            jnp.array(model.kin_dyn_parameters.contact_parameters.body) == link_index,
-            below_terrain,
-            jnp.zeros_like(below_terrain, dtype=bool),
-        ).any()
-    )(js.link.names_to_idxs(link_names=link_names, model=model))
+    mask = jnp.array(model.kin_dyn_parameters.contact_parameters.body)[
+        :, jnp.newaxis
+    ] == jnp.arange(model.number_of_links())
+
+    links_in_contact = (mask.T @ below_terrain)[
+        (js.link.names_to_idxs(link_names=link_names, model=model))
+    ]
 
     return links_in_contact
 
