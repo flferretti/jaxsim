@@ -58,6 +58,9 @@ class ModelDataWithVelocityRepresentation(JaxsimDataclass, abc.ABC):
         original_representation = self.velocity_representation
 
         try:
+            if velocity_representation == original_representation:
+                yield self
+                return
 
             # First, we replace the velocity representation.
             with self.mutable_context(
