@@ -51,7 +51,7 @@ jobs:
           commit-message: This PR updates the `pixi` lockfile.
           title: Update `pixi` lockfile
           body-path: diff.md
-          branch: ${{ github.ref_name }}
+          branch: ${{ env.BRANCH_NAME }}
           base: main
           labels: pixi
           delete-branch: true
