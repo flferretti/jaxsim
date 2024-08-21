@@ -39,16 +39,12 @@ jobs:
       - name: Commit and push changes
         run: |
           BRANCH_NAME="update-pixi-$(date +'%Y%m%d%H%M%S')"
-          git checkout -b "$BRANCH_NAME"
-          git add pixi.lock
-          git commit -m "Update pixi.lock file"
-          git push origin HEAD:"$BRANCH_NAME"
 
       - name: Create pull request
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: This PR updates the `pixi` lockfile.
+          commit-message: Update `pixi.lock`
           title: Update `pixi` lockfile
           body-path: diff.md
           branch: ${{ env.BRANCH_NAME }}
