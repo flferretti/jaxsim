@@ -38,7 +38,7 @@ jobs:
 
       - name: Commit and push changes
         run: |
-          BRANCH_NAME="update-pixi-$(date +'%Y%m%d%H%M%S')"
+          echo "BRANCH_NAME=update-pixi-$(date +'%Y%m%d%H%M%S')" >> $GITHUB_ENV
 
       - name: Create pull request
         uses: peter-evans/create-pull-request@v6
