@@ -24,8 +24,6 @@ jobs:
         with:
           pixi-version: v0.29.0
           cache: true
-          auth-host: prefix.dev
-          auth-token: ${{ secrets.PREFIX_DEV_TOKEN }}
 
       - name: Run benchmarks using pixi
         run: pixi run benchmarks --env test-cpu
