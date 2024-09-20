@@ -260,3 +260,4 @@ Theoretical aspects of JaxSim are based on Chapters 7 and 8 of the following Ph.
 ## License
 
 [BSD3](https://choosealicense.com/licenses/bsd-3-clause/)
+<!-- Dummy commit >
